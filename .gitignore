@@ -1,0 +1,35 @@
+# MATLAB / Simulink
+*.asv
+*.autosave
+*.slxc
+*.mexa64
+*.mexw64
+*.mexmaci64
+slprj/
+sccprj/
+codegen/
+*_grt_rtw/
+*_ert_rtw/
+
+# LaTeX build output
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+_minted*/
+
+# Synopsys work files
+WORK/
+*.svf
+*.mr
+*.pvl
+*.syn
+command.log
+default.svf
+
+# OS
+.DS_Store
+Thumbs.db

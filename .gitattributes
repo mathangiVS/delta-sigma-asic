@@ -1,0 +1,9 @@
+*.slx binary
+*.mlx binary
+*.mat binary
+*.pdf binary
+*.png binary
+*.m   text diff
+*.v   text
+*.tcl text
+*.tex text

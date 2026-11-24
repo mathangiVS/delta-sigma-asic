@@ -1,0 +1,62 @@
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: Design has unannotated primary inputs. (PWR-414)
+Warning: Design has unannotated sequential cell outputs. (PWR-415)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+        -verbose
+Design : top_all_modules
+Version: U-2022.12-SP2
+Date   : Tue Dec  2 12:05:15 2025
+****************************************
+
+
+Library(s) Used:
+
+    uk65lscllmvbbr_110c-40_bc (File: /home/Aditi/UMC65/UMK65LSCLLMVBBR_B03_TAPEOUTKIT/synopsys/uk65lscllmvbbr_110c-40_bc.db)
+
+
+Operating Conditions: uk65lscllmvbbr_110c-40_bc   Library: uk65lscllmvbbr_110c-40_bc
+Wire Load Model Mode: top
+
+Design        Wire Load Model            Library
+------------------------------------------------
+top_all_modules        wl0               uk65lscllmvbbr_110c-40_bc
+
+
+Global Operating Voltage = 1.1  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1pW
+
+
+Attributes
+----------
+i - Including register clock pin internal power
+
+
+  Cell Internal Power  =   5.3864 uW   (97%)
+  Net Switching Power  = 188.5695 nW    (3%)
+                         ---------
+Total Dynamic Power    =   5.5750 uW  (100%)
+
+Cell Leakage Power     = 186.4051 nW
+
+                 Internal         Switching           Leakage            Total                         Cell
+Power Group      Power            Power               Power              Power   (   %    )  Attrs  Count
+---------------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)            0
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)            0
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)            0
+clock_network  5.2792e-03            0.0000            0.0000        5.2792e-03  (  91.63%)            0
+                                                                                             i
+register       4.5811e-05        3.5825e-05        8.5802e+04        1.6744e-04  (   2.91%)            178
+sequential         0.0000            0.0000            0.0000            0.0000  (   0.00%)            0
+combinational  6.1372e-05        1.5274e-04        1.0060e+05        3.1472e-04  (   5.46%)            350
+---------------------------------------------------------------------------------------------------------
+Total          5.3864e-03 mW     1.8857e-04 mW     1.8641e+05 pW     5.7614e-03 mW
+1

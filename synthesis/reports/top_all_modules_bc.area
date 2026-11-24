@@ -1,0 +1,31 @@
+ 
+****************************************
+Report : area
+Design : top_all_modules
+Version: U-2022.12-SP2
+Date   : Sun Dec  7 11:45:09 2025
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    uk65lscllmvbbr_110c-40_bc (File: /home/Aditi/UMC65/UMK65LSCLLMVBBR_B03_TAPEOUTKIT/synopsys/uk65lscllmvbbr_110c-40_bc.db)
+
+Number of ports:                          682
+Number of nets:                          1264
+Number of cells:                          546
+Number of combinational cells:            349
+Number of sequential cells:               177
+Number of macros/black boxes:               0
+Number of buf/inv:                         61
+Number of references:                       2
+
+Combinational area:               1221.840019
+Buf/Inv area:                       67.680003
+Noncombinational area:            1313.280020
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                  2535.120038
+Total area:                 undefined
+1

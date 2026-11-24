@@ -1,0 +1,319 @@
+\documentclass[11pt,onecolumn]{IEEEtran}
+\usepackage[utf8]{helvet}
+\DeclareUnicodeCharacter{2212}{\textminus}
+\usepackage{amsmath, amssymb}
+\usepackage{setspace}
+\renewcommand{\baselinestretch}{1.15}  % Set letter spacing to 1.15
+\usepackage{graphicx}
+\usepackage{adjustbox}
+\usepackage[a4paper, left=1.1cm, right=1.32cm, top=1.9cm, bottom=1.9cm]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{changepage}
+\usepackage{minted}
+\usemintedstyle{matlab}
+\usepackage{hyperref}
+% \documentclass{article}
+\usepackage{amsmath}
+\usepackage{graphicx} % Required for \includegraphics
+\usepackage{float}    % Required for the [H] placement specifier
+% Note: You may need other packages like booktabs for table formatting if your original document uses them.
+\usepackage[table]{xcolor}
+\hypersetup{
+    colorlinks=true,
+    allcolors=black
+}
+\usepackage[font=11]{caption} % safe options
+\captionsetup{justification=centering}
+\renewcommand{\thesection}{\arabic{section}}
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    {\Huge \textbf{DELTA-SIGMA ASIC Development} \par}
+    \vspace{2cm}
+    {\Large \textit{REPORT FILE} \par}
+    \vspace{1cm}
+    {\Large Mid-Prep\par} 
+    \vspace{1cm}
+    \vfill
+\end{titlepage}
+
+\tableofcontents  % Generates the table of contents
+
+\newpage  % Starts new page for the main content
+
+\author{}
+\date{}
+
+\section{\textbf{Digital/Decimation Filters}}
+A Delta–Sigma Modulator (DSM) produces a high-frequency, oversampled bitstream in which quantization noise is shaped out of the signal band. To obtain the final digital output at the desired sampling frequency, a decimation filter must be applied. The decimation filter removes out-of-band noise and then reduces the sampling rate by the oversampling ratio (OSR). By choosing the decimation factor equal to the OSR, the system converts the DSM’s high-rate 1-bit stream into a lower-rate multi-bit (20) digital signal while preserving in-band accuracy.
+\newline
+\indent Our objective is to design a filter having 3dB cutoff of $\pi$/2048, narrow transition width and stop band attenuation of at least 80dB.
+The use of IIR filters was ruled out because feedback paths hinder pipelining, tighten timing constraints, and affect stability. Thus, we explored FIR and SINC filters, specifically Cascaded Integrator Comb (CIC) Filters.
+
+\subsection{\textbf{FIR Filters}} 
+
+Although a single FIR filter could theoretically achieve the required response, it would be impractical to implement such a filter. It would demand a high ordered filter resulting in excessive memory usage, a large number of multipliers, higher power consumption, and increased hardware complexity. 
+
+Instead, we use a cascade of halfband FIR filters, since they achieve the desired response with much lower order, and still provide sufficient precision. Alongside they also require less number of coefficient bits to implement. Given our OSR of 2048, we implement a cascade of 11 halfband filters and perform the required downsampling. Each decimation filter should have 3dB cutoff at $\pi$/2 followed by downsampling by 2.
+\vspace{1mm}
+\subsubsection{Filter Specifications}
+For our implementation, we selected a 101-tap FIR filter. This configuration provides a narrow transition band and strong stopband attenuation. Although such a filter would be challenging to implement efficiently in hardware, our goal was to evaluate its performance and verify feasibility of the design. The coefficients were provided by MATLAB Filter Designer.
+\vspace{1mm}
+\begin{table}[h!]
+\centering
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{Window Type} & \textbf{Transition Band (0–1)} & \textbf{Attenuation (dB)} & \textbf{Ripple in stopband (dB)} \\ \hline
+Blackman & 0.12 & -80 & Between 100 and 80 \\ \hline
+Blackman-Harris & 0.21 & -110 & Between 110 and 120 \\ \hline
+Chebychev & 0.08 & -58 & Between 58 and 73 \\ \hline
+Hamming & 0.09 & -60 & Between 60 and 70 \\ \hline
+Rectangular & does not reach 40 dB & -35 & --- \\ \hline
+\end{tabular}
+\caption{Characteristics of various window functions}
+\label{tab:window_comparison}
+\end{table}
+
+   Our MATLAB implementation uses the same coefficients in double precision floating point format. The results we obtained from testing different windowing functions have been logged in Table~\ref{tab:window_comparison}. We needed to select a window for a small transition band and stop band attenuation of atleast 80dB \cite{windowing}. We found Chebyshev window function to satisfy the requirements.
+\vspace{1mm}
+\subsubsection{Quantization and Truncation}
+The coefficients were quantized to 32-bit fixed-point (1 sign bit and 31 fractional bits) by MATLAB Filter Designer. We evaluated the 32-bit final output width performance before reducing the bit width to 20 bits.
+
+Output growth must be controlled in cascaded FIR filters and in fixed-point we need to keep track of the decimal point as well. We first find the maximum possible sum of all the coefficients to get the maximum possible output of the first filter. This gives an estimate on output bit width of accumulator. The multiplication of $M$ and $N$ number of fraction bits gives us $M + N$ fraction bits and summation does not affect the number of fraction bits. We have designed the accumulator width such that we can simply take its 32 MSB bits each time. Fig.~\ref{fig:halfband_cascade} shows how we perform truncation using 2 cascaded FIR filters as an example. We continue applying the same technique for the other 9 filters.
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=1\linewidth]{bit_growth.png}
+    \caption{Bit growth and accumulator sizing when cascading two 101-tap halfband FIR filters.}
+    \label{fig:halfband_cascade}
+\end{figure}
+
+\subsubsection{MATLAB vs Verilog Simulation Results}
+    As observed in Table~\ref{tab:fir_sndr_comparison}, MATLAB gives higher SNDR as comapred to verilog simulations due to increase in precision. The verilog model uses 32-bit values while MATLAB is set to double precision. Truncation is done after each stage in verilog for the desired output bit width. This results in loss of information, especially at higher frequencies where the information is mainly stored in the lower bits. To tackle this problem we would need higher order filters, larger accumulator, and larger output bit width which increases hardware complexity. 
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{Input Frequency (Hz)} & \textbf{SNDR (MATLAB Simulation)(dB)} & \textbf{SNDR (Verilog Simulation)(dB)} \\ \hline
+10   &         66.78      & 69.1803 \\ \hline
+500  &         62.35      & 61.01\\ \hline
+990  &         62.17      & 57.918 \\ \hline
+\end{tabular}
+\caption{Simulation results comparison of SNDR of FIR filter}
+\label{tab:fir_sndr_comparison}
+\end{table} 
+
+Although further refinement of the fixed-point implementation might be possible, our MATLAB results show that even double-precision floating-point implementation did not meet the required SNDR specifications. This observation motivated us to shift from FIR filters to CIC filters, which offer lower hardware complexity and less sensitivity to bit-width limitations.
+
+
+\subsection{\textbf{CIC Filter}}
+CIC filters are hardware efficient due to their multiplier-free structures which makes them suitable for high speed filtering. CIC filters typically require droop compensation; however, when implemented in verilog, the compensation stage significantly degrades the output quality. Since the design specifications were being satisfied for certain CIC filter parameters, as confirmed through MATLAB analysis, the compensation stage was omitted.
+\subsubsection{Filter Parameters}
+Below are the different combinations of the CIC filter that were tested to match our requirements. We explored cascaded CIC filters and single CIC filter configurations. $N$ denotes the number of stages and $R$ denotes the decimation factor of the CIC filter.
+\begin{itemize}
+    \item \textbf{Cascaded CIC:} Table~\ref{tab:ccic_sndr_comparison} presents the MATLAB and verilog performance comparison. The most satisfactory result was obtained using the configuration of two cascaded CIC filters having \(N_1\) = 2, \(R_1\) = 512, \(N_2\) = 1, \newline \(R_2\) = 4 achieving an SNDR of $103dB$ which translates to $16.81 ENOBs$, having a passband droop of $3.8dB$. The passband droop has been calculated as the difference of amplitude in PSD of $10Hz$ and $990Hz$ input signals in dB. Peak SNDR has been calculated for an input signal frequency of 10 Hz. We have kept the differential delay M to be 1 because of power and memory minimization.
+        \begin{table}[h!]
+        \centering
+        \begin{tabular}{|c|c|c|c|c|c|c|}
+        \hline
+        \(\mathbf{N_1}\) & \(\mathbf{N_2}\) & \(\mathbf{R_1}\) & \(\mathbf{R_2}\) &
+    \textbf{Peak SNDR (dB)} & \textbf{Passband Droop (dB)} & \textbf{ENOBs} \\ \hline
+
+        2 & 2 & 64  & 32  & 114 & 8.067  & 18.65 \\ \hline
+        3 & 1 & 128 & 16  & 93  & 4.33   & 15.15 \\ \hline
+        1 & 2 & 16  & 128 & 73  & 4.23   & 11.83 \\ \hline
+        3 & 1 & 16  & 128 & 76  & 6.232  & 12.33 \\ \hline
+        2 & 1 & 256 & 8   & 94  & 3.633  & 15.32 \\ \hline
+        2 & 1 & 512 & 4   & 103 & 3.823  & 16.81 \\ \hline
+        \end{tabular}
+        \caption{Configuration and performance characteristics of different cascaded CIC filters}
+        \label{tab:ccic_sndr_comparison}
+        \end{table}
+        
+    \item \textbf{Single CIC:}
+        We tested a variety of different single CIC filters and chose a 4th order, 512 decimation CIC as our final configuration. This provided an approximate ENOBs of 18.38. We optimized CIC filter for low passband droop but higher ENOBs can be achieved by compromising on the passband droop as evident from Table~\ref{tab:cic_sndr_comparison}.
+        \begin{table}[h!]
+        \centering
+        \begin{tabular}{|c|c|c|c|c|c|}
+        \hline
+        \textbf{N} & {R} & \textbf{Downsampling rate} &
+        \textbf{Peak SNDR (dB)} & \textbf{Passband droop (dB)} & \textbf{ENOBs} \\  \hline
+
+        2 & 2048 & 1 & 113.96   & 7.672  & 18.64 \\  \hline
+        3 & 2048 & 1 & 117.2580 & 11.508 & 19.19 \\ \hline
+
+        2  & 1024 & 2 & 102.2786 & 1.786 & 16.70 \\ \hline
+        3  & 1024 & 2 & 117.1219 & 2.86  & 19.16 \\ \hline
+        2  & 512  & 4 & 90.52    & 0.439 & 14.75 \\ \hline
+        3  & 512  & 4 & 110.4702 & 0.661 & 18.06 \\ \hline
+        \rowcolor{green!25}
+        4  & 512 & 4 & 112.4079 & 0.880 & 18.38 \\ \hline
+        4  & 256  & 8 & 99.2773  & 0.219 & 16.20 \\ \hline
+        8  & 256  & 8 & 106.0866 & 0.439 & 17.33 \\ \hline
+        16 & 256  & 8 & 111.3581 & 0.877 & 18.21 \\ \hline
+        \end{tabular}
+        \caption{Configuration and performance characteristics of different single stage CIC filters}
+        \label{tab:cic_sndr_comparison}
+        \end{table}
+        
+
+
+\end{itemize}
+\subsubsection{Quantization and Truncation}
+In 2 cascaded CIC configuration, we observed that any truncation results in a poor SNDR, but this was not the case for a single CIC filter. We tested three different truncation techniques for reducing our output from 38-bits to the required ADC resolution of 20-bits:
+\begin{itemize}
+    \item Truncation: During our testing we noticed the 3 MSB bits were being occupied by the sign bits regardless of input frequency. Therefore we decided to omit 2 MSB bits and only take bits [35:16] from our output of [37:0]. All the other techniques work on truncating [35:0] to [35:16].
+    \item Rounding: The output word [35:16] is rounded according to the magnitude of the discarded bits [15:0].
+    \item Dithering \cite{Dithering}:  Before truncation we add random noise generated using the difference of output given by 2 LFSRs \cite{LFSR} with different seeds, add it to the LSB bits, round off, and then truncate the final result from [35:0] to [35:16].
+\end{itemize}
+Table~\ref{tab:truncation_sndr_comparison} lists the SNDR of the filter output at various input frequencies. For comparison, we also include the SNDR values obtained when the omitted sign bits are retained, to illustrate the impact of preserving those bits.
+\begin{table}[h!]
+\centering
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\textbf{Truncation Method} & \textbf{SNDR - 10 Hz (dB)} & \textbf{SNDR - 500 Hz (dB)} & \textbf{SNDR - 990 Hz (dB)} & \textbf{Passband Droop (dB)} \\ \hline
+Dithering  & 110.1298 & 110.1339 & 108.8797 & 0.879 \\ \hline
+Truncation[35:16] & 112.4079 & 112.4000 & 111.1471 & 0.881 \\ \hline
+Truncation[36:17] & 108.5249 & 117.7966 & 109.7325 & 0.88 \\ \hline
+Truncation[37:18] & 105.0724 & 120.1635 & 104.4010 & 0.88 \\ \hline
+Rounding   & 108.9687 & 109.5601 & 108.7530 & 0.901 \\ \hline
+\end{tabular}
+\caption{SNDR and droop comparison for various output quantization methods}
+\label{tab:truncation_sndr_comparison}
+\end{table}
+\vspace{-1mm}
+\subsubsection{MATLAB vs Verilog Simulation Results}
+Table~\ref{tab:final_sndr_comparison} compares the MATLAB and Verilog simulation outcomes. MATLAB yields higher SNDR because it operates in double-precision arithmetic, which significantly reduces truncation effects.
+
+
+
+% %\subsection{Specifications}
+% To summarise, our design specifications are:
+
+% %\begin{itemize}
+% %    \item Input Bit Width: \(B_{\text{in}} = 1\)
+% %    \item Output Bit Width: \(B_{\text{out}} = 20\)
+% %    \item Number of Stages in Integrator/Comb: \(N = 4\)
+% %    \item Decimation Factor of CIC filter: \(R_1 = 512\)
+% %    \item Comb Delay: \(M = 1\)
+% %    \item Additional Decimation Factor: \(R_2 = 4\)
+% %\end{itemize}
+
+% %\begin{table}[h]
+% %\centering
+% %\begin{tabular}{ll}
+% %\textbf{Parameter} & \textbf{Value} \\
+% %\hline
+% %Input Bit Width & \(B_{\text{in}} = 1\) \\
+% %Output Bit Width & \(B_{\text{out}} = 20\) \\
+% %%Integrator/Comb Stages & \(N = 4\) \\
+% %CIC Decimation Factor & \(R_1 = 512\) \\
+% %Comb Delay & \(M = 1\) \\
+% %Additional Decimation Factor & \(R_2 = 4\) \\
+% %\end{tabular}
+% %\end{table}
+\vspace{-2mm}
+\begin{table}[h!]
+\centering
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{Frequencies (Hz)} & \textbf{SNDR (MATLAB Simulation)(dB)} & \textbf{SNDR (Verilog Simulation)(dB)} \\ \hline
+10   &         115.05      & 112.4079 \\ \hline
+500  &         115.85      & 112.4000\\ \hline
+990  &         113.06      & 111.1471 \\ \hline
+\end{tabular}
+\caption{Simulation results comparison of SNDR}
+\label{tab:final_sndr_comparison}
+\end{table} 
+\section{HDL Design}
+
+\subsection{Demodulator}
+This block converts the incoming 1-bit bitstream into a 2-bit signed output using a two-state FSM. In state 1, the input is appended with a 0, effectively multiplying it by $+1$. In state 2, a 0 input produces 00, while a 1 input produces 11 (−1 in signed form), corresponding to multiplication by $-1$. Thus, the bitstream is multiplied by a $F_s/2$ periodic square-wave sequence $(-1)^n$. The demodulator runs at the sampling frequency $f_s$, producing outputs at the same rate.
+
+\subsection{Integrator}
+The integrator stage forms the first section of the CIC filter and implements a discrete-time accumulator. It is a register-based design where an OW-bit register stores the running sum of the sign-extended input. The output is simply the accumulator’s updated contents.
+
+\subsection{All Integrators}
+The All Integrators module forms the CIC integrator stage by cascading $N$ basic integrators to produce an $N$-th order running sum. Each stage feeds the next, with enable signals chained through internal \texttt{out\_ready} signals, while the first stage uses the external enable input. The final stage output provides the overall accumulated result.
+
+\begin{figure}[b!]
+    \centering
+    \includegraphics[width=1\linewidth]{GB 20.png}
+    \caption{HDL Code Block Diagram}
+    \label{fig:placeholder}
+\end{figure}
+
+\subsection{Downsampler}
+This block performs sample-rate reduction using a mod-$R$ counter and a data-hold register. Each time the counter reaches $R$, the current \texttt{input\_data} is captured into the output register, the counter resets, and \texttt{out\_ready} pulses high for one cycle to indicate a new decimated sample and to enable the next comb stage.
+
+\subsection{Comb}
+This block implements the CIC comb stage, computing the discrete-time difference between the current input and the previous sample. A single register stores the one-cycle delay, and the output holds the subtraction result.
+
+\subsection{All Combs}
+This block instantiates a cascaded chain of $N$ first-order comb stages. Each stage feeds the next, with the first stage driven by the downsampler output. The downsampler asserts the initial enable signal, and each stage’s \texttt{out\_ready} becomes the enable for the following stage.
+
+\subsection{cic\_top}
+This module integrates the \texttt{all\_integrator}, \texttt{decimator}, and \texttt{all\_comb} blocks to form an $N$th-order CIC decimator. The integrators compute running sums, whose outputs are downsampled by a factor $R$. The decimated stream then passes through $N$ comb stages. Valid and ready signals between stages (\texttt{integrator\_ready}, \texttt{downsampler\_ready}, \texttt{out\_ready}) ensure correct data flow across the rate-change boundary.
+
+
+\subsection{full\_filter}
+This module implements a two-stage decimation cascade. The first stage is a full CIC filter (\texttt{cic\_top}) that performs filtering and decimation by $R_1$, producing \texttt{cic\_out} and \texttt{out\_ready\_cic} at a rate of $f_s/R_1$. Next, a simple downsampler that applies decimation by $R_2$. The final output \texttt{dout} is thus generated at $f_s/(R_1 R_2)$.
+
+
+\subsection{top}
+This top-level module processes the 1-bit oversampled output of a sigma--delta ADC. The demodulator first converts the single-bit stream into a 2-bit signed value, which is then passed to a two-stage decimation filter comprising a CIC decimator followed by a downsampler. Finally, the decimated output is truncated to a user-specified bit width.
+
+
+\section{Challenges Faced}
+
+Several challenges arose during the design process, including quantizing FIR tap coefficients, deciding how to truncate the filter output, and managing bit growth when cascading multiple halfband filters. Experimentally determining the impulse response of the LTV CIC filter also added complexity. Many CIC configurations were evaluated, varying both decimation factors and the number of stages, while balancing the trade-off between passband droop and achievable SNDR to meet the required specifications.
+
+We modified the SDC file to distinguish control signals (\texttt{rst}, \texttt{en}) from data signals. This ensures that the synthesis tool does not treat them as high-speed inputs, thereby preventing false timing violations during analysis.
+
+
+\section{New Learnings}
+
+\subsubsection{LTV System Impulse Response}
+CIC filter is a linear time-variant system, thus its impulse response cannot be constructed directly by exciting the filter with $\delta[n]$. For an $N$ decimation filter, we need to excite the system with $\delta[n], \ldots, \delta[n-N+1]$ independently, and thus obtain all the required taps to construct its impulse response. For an $R$-stage, $N$-decimation CIC filter, we obtain $NR - 1$ taps.
+
+For a 3-stage, 32-decimation CIC filter, we will obtain $h[0],\ h[32],\ h[64],\ldots$ for $\delta[n]$, $h[-1],\ h[31],\ h[63],\ldots$ for $\delta[n-1]$, and so on.
+
+After obtaining all these taps, we can stitch them together and obtain the required impulse response $h[n]$ for the LTV system, and analyze its magnitude and frequency response.
+
+
+
+\section{Limitations and Risks}
+\newpage
+
+
+
+% Note: \begin{thebibliography} automatically adds the section heading "References"
+% You do not need to write \section{References} manually.
+\newpage
+\section{References}
+\renewcommand{\refname}{} % For 'article' class
+\renewcommand{\bibname}{} % For 'report' or 'book' class
+\vspace{-1cm}
+\begin{thebibliography}{9} % The '9' tells LaTeX to align based on single-digit numbers
+    \bibitem{windowing}
+   A. V. Oppenheim and R. W. Schafer, Discrete-Time Signal Processing, 3rd ed. Upper Saddle River, NJ, USA: Pearson, 2009, ch. 7.
+    \bibitem{LFSR}
+   R. Ward and T. Molteno, “Table of linear feedback shift registers,” Department of Physics, University of Otago, Dunedin, New Zealand, Oct. 26, 2007.
+   \bibitem{Dithering}
+   S. S. Nethisinghe, “Philips Bitstream Conversion,” Philips Components ICs, Jan. 1991, p. 40.
+    
+      
+
+% \bibitem{a}
+% Léger, G., Ginés, A. J., Peralías, E. J., & Rueda, A. (2010). On chopper effects in discrete-time ΣΔ modulators. *IEEE Transactions on Circuits and Systems I: Regular Papers*, 57(9), 2438-2449.
+
+\end{thebibliography}
+
+\end{document}
+\begin{figure}
+    \centering
+    \includegraphics[width=0.5\linewidth]{Drawing(1).png}
+    \caption{Enter Caption}
+    \label{fig:placeholder}
+\end{figure}
